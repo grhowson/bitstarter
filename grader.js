@@ -24,8 +24,10 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
-var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var HTMLFILE_TMP = "tmp.html";
+var rest = require('restler');
+var util = require('util');
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -55,6 +57,26 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     return out;
 };
 
+var JSONchecks = function(htmlfile) {
+    var checkJson = checkHtmlFile(htmlfile, program.checks);
+    var outJson = JSON.stringify(checkJson, null, 4);
+    console.log(outJson);
+}
+
+
+var checkURL = function(result) {
+    //console.log("in checkURL");
+    if (result instanceof Error) {
+	console.error("Error: " + util.format(result.message));
+	process.exit(1);
+    } else {
+	//console.log("response is: " + result.toString());
+	//console.log("saving URL data to " + HTMLFILE_TMP);
+	fs.writeFileSync(HTMLFILE_TMP, result.toString());
+	JSONchecks(HTMLFILE_TMP);
+    }
+}
+
 var clone = function(fn) {
     // Workaround for commander.js issue.
     // http://stackoverflow.com/a/6772648
@@ -64,11 +86,27 @@ var clone = function(fn) {
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-f, --file <html_file>', 'Path to index.html')
+        .option('-u, --url <URL>', 'Link to html_file')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    var htmlfile = HTMLFILE_TMP;
+    if (!program.file && !program.url) {
+	console.log("must provide HTML file path or URL");
+	process.exit(1);
+    }
+    if (program.file && program.url) {
+	console.log("must provide either HTML file path or URL, not both");
+	process.exit(1);
+    }
+    if (program.url) {
+	//console.log("URL is " + program.url);
+	rest.get(program.url).on('complete', checkURL);
+    }
+    else {
+	//console.log("file option, file is " + program.file);
+	assertFileExists(program.file);
+	JSONchecks(program.file);
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
